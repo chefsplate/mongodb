@@ -40,18 +40,24 @@ class LoggableDatabase extends Database implements Loggable
     /**
      * Constructor.
      *
-     * @param Connection   $connection     Connection used to create Collections
-     * @param \MongoDB     $mongoDB        MongoDB instance being wrapped
-     * @param EventManager $evm            EventManager instance
-     * @param integer      $numRetries     Number of times to retry queries
-     * @param callable     $loggerCallable The logger callable
+     * @param Connection    $connection              Connection used to create Collections
+     * @param \MongoDB      $mongoDB                 MongoDB instance being wrapped
+     * @param EventManager  $evm                     EventManager instance
+     * @param Configuration $configuration
+     * @param callable      $loggerCallable          The logger callable
      */
-    public function __construct(Connection $connection, \MongoDB $mongoDB, EventManager $evm, $numRetries, $loggerCallable)
-    {
+    public function __construct(
+        Connection $connection,
+        \MongoDB $mongoDB,
+        EventManager $evm,
+        Configuration $configuration,
+        $loggerCallable
+    ) {
         if ( ! is_callable($loggerCallable)) {
             throw new \InvalidArgumentException('$loggerCallable must be a valid callback');
         }
-        parent::__construct($connection, $mongoDB, $evm, $numRetries);
+        parent::__construct($connection, $mongoDB, $evm, $configuration);
+
         $this->loggerCallable = $loggerCallable;
     }
 
@@ -165,7 +171,13 @@ class LoggableDatabase extends Database implements Loggable
     {
         $mongoGridFS = $this->mongoDB->getGridFS($prefix);
 
-        return new LoggableGridFS($this, $mongoGridFS, $this->eventManager, $this->numRetries, $this->loggerCallable);
+        return new LoggableGridFS(
+            $this,
+            $mongoGridFS,
+            $this->eventManager,
+            $this->configuration,
+            $this->loggerCallable
+        );
     }
 
     /**
@@ -179,6 +191,12 @@ class LoggableDatabase extends Database implements Loggable
     {
         $mongoCollection = $this->mongoDB->selectCollection($name);
 
-        return new LoggableCollection($this, $mongoCollection, $this->eventManager, $this->numRetries, $this->loggerCallable);
+        return new LoggableCollection(
+            $this,
+            $mongoCollection,
+            $this->eventManager,
+            $this->configuration,
+            $this->loggerCallable
+        );
     }
 }

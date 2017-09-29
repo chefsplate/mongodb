@@ -42,14 +42,18 @@ class GridFS extends Collection
     /**
      * Constructor.
      *
-     * @param Database     $database    Database to which this collection belongs
+     * @param Database $database Database to which this collection belongs
      * @param \MongoGridFS $mongoGridFS MongoGridFS instance being wrapped
-     * @param EventManager $evm         EventManager instance
-     * @param integer      $numRetries  Number of times to retry queries
+     * @param EventManager $evm EventManager instance
+     * @param Configuration $configuration
      */
-    public function __construct(Database $database, \MongoGridFS $mongoGridFS, EventManager $evm, $numRetries = 0)
-    {
-        parent::__construct($database, $mongoGridFS, $evm, $numRetries);
+    public function __construct(
+        Database $database,
+        \MongoGridFS $mongoGridFS,
+        EventManager $evm,
+        Configuration $configuration
+    ) {
+        parent::__construct($database, $mongoGridFS, $evm, $configuration);
     }
 
     /**
@@ -149,7 +153,7 @@ class GridFS extends Collection
     protected function doFindOne(array $query = [], array $fields = [])
     {
         $mongoCollection = $this->mongoCollection;
-        $file = $this->retry(function() use ($mongoCollection, $query, $fields) {
+        $file = $this->retryRead(function() use ($mongoCollection, $query, $fields) {
             return $mongoCollection->findOne($query, $fields);
         });
         if ($file) {

@@ -27,19 +27,24 @@ class LoggableGridFS extends GridFS implements Loggable
     use LoggableCollectionTrait;
 
     /**
-     * @param Database     $database    Database to which this collection belongs
+     * @param Database $database Database to which this collection belongs
      * @param \MongoGridFS $mongoGridFS MongoGridFS instance being wrapped
-     * @param EventManager $evm         EventManager instance
-     * @param integer      $numRetries  Number of times to retry queries
-     * @param callable     $loggerCallable  The logger callable
+     * @param EventManager $evm EventManager instance
+     * @param Configuration $configuration
+     * @param callable $loggerCallable The logger callable
      */
-    public function __construct(Database $database, \MongoGridFS $mongoGridFS, EventManager $evm, $numRetries = 0, $loggerCallable = null)
-    {
+    public function __construct(
+        Database $database,
+        \MongoGridFS $mongoGridFS,
+        EventManager $evm,
+        Configuration $configuration,
+        $loggerCallable = null
+    ) {
         if ( ! is_callable($loggerCallable)) {
             throw new \InvalidArgumentException('$loggerCallable must be a valid callback');
         }
 
-        parent::__construct($database, $mongoGridFS, $evm, $numRetries, $loggerCallable);
+        parent::__construct($database, $mongoGridFS, $evm, $configuration);
 
         $this->loggerCallable = $loggerCallable;
     }

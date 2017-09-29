@@ -28,24 +28,37 @@ namespace Doctrine\MongoDB;
 class Configuration
 {
     /**
-     * Array of attributes for this configuration instance.
-     *
-     * @var array
+     * @deprecated
+     * @var string
      */
-    protected $attributes = [
-        'mongoCmd' => '$',
-        'retryConnect' => 0,
-        'retryQuery' => 0,
-    ];
+    protected $mongoCmd = '$';
+
+    /** @var int */
+    protected $numRetryConnect = 0;
+
+    /** @var int */
+    protected $numRetryReads = 0;
+
+    /** @var int */
+    protected $timeBetweenReadRetriesMs = 0;
+
+    /** @var int */
+    protected $numRetryWrites = 0;
+
+    /** @var int */
+    protected $timeBetweenWriteRetriesMs = 0;
+
+    /** @var callable */
+    protected $loggerCallable;
 
     /**
      * Gets the logger callable.
      *
-     * @return callable
+     * @return callable|null
      */
     public function getLoggerCallable()
     {
-        return isset($this->attributes['loggerCallable']) ? $this->attributes['loggerCallable'] : null;
+        return $this->loggerCallable;
     }
 
     /**
@@ -55,7 +68,7 @@ class Configuration
      */
     public function setLoggerCallable($loggerCallable)
     {
-        $this->attributes['loggerCallable'] = $loggerCallable;
+        $this->loggerCallable = $loggerCallable;
     }
 
     /**
@@ -67,7 +80,7 @@ class Configuration
     public function getMongoCmd()
     {
         trigger_error('MongoDB command prefix option is no longer used', E_USER_DEPRECATED);
-        return $this->attributes['mongoCmd'];
+        return $this->mongoCmd;
     }
 
     /**
@@ -79,7 +92,7 @@ class Configuration
     public function setMongoCmd($cmd)
     {
         trigger_error('MongoDB command prefix option is no longer used', E_USER_DEPRECATED);
-        $this->attributes['mongoCmd'] = $cmd;
+        $this->mongoCmd = $cmd;
     }
 
     /**
@@ -87,38 +100,90 @@ class Configuration
      *
      * @return integer
      */
-    public function getRetryConnect()
+    public function getNumRetryConnect()
     {
-        return $this->attributes['retryConnect'];
+        return $this->numRetryConnect;
     }
 
     /**
      * Set the number of times to retry connection attempts after an exception.
      *
-     * @param boolean|integer $retryConnect
+     * @param boolean|integer $numRetryConnect
      */
-    public function setRetryConnect($retryConnect)
+    public function setNumRetryConnect($numRetryConnect)
     {
-        $this->attributes['retryConnect'] = (integer) $retryConnect;
+        $this->numRetryConnect = (integer) $numRetryConnect;
     }
 
     /**
-     * Get the number of times to retry queries after an exception.
+     * Get the number of times to retry read queries after an exception.
      *
      * @return integer
      */
-    public function getRetryQuery()
+    public function getNumRetryReads()
     {
-        return $this->attributes['retryQuery'];
+        return $this->numRetryReads;
     }
 
     /**
-     * Set the number of times to retry queries after an exception.
+     * Set the number of times to retry read queries after an exception.
      *
-     * @param boolean|integer $retryQuery
+     * @param boolean|integer $numRetryReads
      */
-    public function setRetryQuery($retryQuery)
+    public function setNumRetryReads($numRetryReads)
     {
-        $this->attributes['retryQuery'] = (integer) $retryQuery;
+        $this->numRetryReads = (integer) $numRetryReads;
+    }
+
+    /**
+     * @return int
+     */
+    public function getTimeBetweenReadRetriesMs()
+    {
+        return $this->timeBetweenReadRetriesMs;
+    }
+
+    /**
+     * @param int $timeBetweenReadRetriesMs
+     */
+    public function setTimeBetweenReadRetriesMs($timeBetweenReadRetriesMs)
+    {
+        $this->timeBetweenReadRetriesMs = (integer) $timeBetweenReadRetriesMs;
+    }
+
+    /**
+     * Get the number of times to retry write queries after an exception.
+     *
+     * @return int
+     */
+    public function getNumRetryWrites()
+    {
+        return $this->numRetryWrites;
+    }
+
+    /**
+     * Get the number of times to retry write queries after an exception.
+     *
+     * @param boolean|integer $numRetryWrites
+     */
+    public function setNumRetryWrites($numRetryWrites)
+    {
+        $this->numRetryWrites = (integer) $numRetryWrites;
+    }
+
+    /**
+     * @return int
+     */
+    public function getTimeBetweenWriteRetriesMs()
+    {
+        return $this->timeBetweenWriteRetriesMs;
+    }
+
+    /**
+     * @param int $timeBetweenWriteRetriesMs
+     */
+    public function setTimeBetweenWriteRetriesMs($timeBetweenWriteRetriesMs)
+    {
+        $this->timeBetweenWriteRetriesMs = (integer) $timeBetweenWriteRetriesMs;
     }
 }

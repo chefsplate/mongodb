@@ -2,9 +2,9 @@
 
 namespace Doctrine\MongoDB\Tests;
 
+use Doctrine\MongoDB\Configuration;
 use MongoGridFS;
 use MongoGridFSFile;
-use Doctrine\MongoDB\GridFSFile;
 use Doctrine\MongoDB\LoggableGridFS;
 use Doctrine\MongoDB\Database;
 use Doctrine\Common\EventManager;
@@ -13,6 +13,9 @@ class LoggableGridFSTest extends TestCase
 {
     const COLLECTION_NAME = 'collectionName';
     const DATABASE_NAME = 'databaseName';
+
+    /** @var \PHPUnit_Framework_MockObject_MockObject|MongoGridFS */
+    private $mongoGridFS;
 
     public function testLog()
     {
@@ -39,7 +42,7 @@ class LoggableGridFSTest extends TestCase
             ->disableOriginalConstructor()
             ->getMock();
 
-        $this->mongoCollection->expects($this->any())
+        $this->mongoGridFS->expects($this->any())
             ->method('get')
             ->will($this->returnValue($mongoGridFSFile));
 
@@ -66,6 +69,7 @@ class LoggableGridFSTest extends TestCase
 
     private function getLoggableGridFS($loggerCallable)
     {
+        /** @var \PHPUnit_Framework_MockObject_MockObject|Database $database */
         $database = $this->getMockBuilder(Database::class)
             ->disableOriginalConstructor()
             ->getMock();
@@ -74,18 +78,24 @@ class LoggableGridFSTest extends TestCase
             ->method('getName')
             ->will($this->returnValue(self::DATABASE_NAME));
 
-        $this->mongoCollection = $this->getMockBuilder(MongoGridFS::class)
+        $this->mongoGridFS = $this->getMockBuilder(MongoGridFS::class)
             ->disableOriginalConstructor()
             ->getMock();
 
-        $this->mongoCollection->expects($this->any())
+        $this->mongoGridFS->expects($this->any())
             ->method('getName')
             ->will($this->returnValue(self::COLLECTION_NAME));
 
+        /** @var EventManager|\PHPUnit_Framework_MockObject_MockObject $eventManager */
         $eventManager = $this->getMockBuilder(EventManager::class)
             ->disableOriginalConstructor()
             ->getMock();
 
-        return new LoggableGridFS($database, $this->mongoCollection, $eventManager, 0, $loggerCallable);
+        /** @var Configuration|\PHPUnit_Framework_MockObject_MockObject $configuration */
+        $configuration = $this->getMockBuilder(Configuration::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        return new LoggableGridFS($database, $this->mongoGridFS, $eventManager, $configuration, $loggerCallable);
     }
 }

@@ -45,11 +45,9 @@ class Cursor implements CursorInterface
     protected $mongoCursor;
 
     /**
-     * Number of times to retry queries.
-     *
-     * @var integer
+     * @var Configuration
      */
-    protected $numRetries;
+    protected $configuration;
 
     /**
      * Whether to use the document's "_id" value as its iteration key.
@@ -83,19 +81,24 @@ class Cursor implements CursorInterface
      *
      * The wrapped MongoCursor instance may change if the cursor is recreated.
      *
-     * @param Collection   $collection  Collection used to create this Cursor
-     * @param \MongoCursor $mongoCursor MongoCursor instance being wrapped
-     * @param array        $query       Query criteria
-     * @param array        $fields      Selected fields (projection)
-     * @param integer      $numRetries  Number of times to retry queries
+     * @param Collection    $collection  Collection used to create this Cursor
+     * @param \MongoCursor  $mongoCursor MongoCursor instance being wrapped
+     * @param array         $query       Query criteria
+     * @param array         $fields      Selected fields (projection)
+     * @param Configuration $configuration
      */
-    public function __construct(Collection $collection, \MongoCursor $mongoCursor, array $query = [], array $fields = [], $numRetries = 0)
-    {
+    public function __construct(
+        Collection $collection,
+        \MongoCursor $mongoCursor,
+        Configuration $configuration,
+        array $query = [],
+        array $fields = []
+    ) {
         $this->collection = $collection;
         $this->mongoCursor = $mongoCursor;
+        $this->configuration = $configuration;
         $this->query = $query;
         $this->fields = $fields;
-        $this->numRetries = (integer) $numRetries;
     }
 
     /**
@@ -139,7 +142,7 @@ class Cursor implements CursorInterface
     public function count($foundOnly = false)
     {
         $cursor = $this;
-        return $this->retry(function() use ($cursor, $foundOnly) {
+        return $this->retryRead(function() use ($cursor, $foundOnly) {
             return $cursor->getMongoCursor()->count($foundOnly);
         }, true);
     }
@@ -182,7 +185,7 @@ class Cursor implements CursorInterface
     public function explain()
     {
         $cursor = $this;
-        return $this->retry(function() use ($cursor) {
+        return $this->retryRead(function() use ($cursor) {
             return $cursor->getMongoCursor()->explain();
         }, true);
     }
@@ -252,7 +255,7 @@ class Cursor implements CursorInterface
     public function getNext()
     {
         $cursor = $this;
-        $next = $this->retry(function() use ($cursor) {
+        $next = $this->retryRead(function() use ($cursor) {
             return $cursor->getMongoCursor()->getNext();
         }, false);
         if ($next instanceof \MongoGridFSFile) {
@@ -367,7 +370,7 @@ class Cursor implements CursorInterface
     public function hasNext()
     {
         $cursor = $this;
-        return $this->retry(function() use ($cursor) {
+        return $this->retryRead(function() use ($cursor) {
             return $cursor->getMongoCursor()->hasNext();
         }, false);
     }
@@ -469,7 +472,7 @@ class Cursor implements CursorInterface
     public function next()
     {
         $cursor = $this;
-        $this->retry(function() use ($cursor) {
+        $this->retryRead(function() use ($cursor) {
             $cursor->getMongoCursor()->next();
         }, false);
     }
@@ -546,7 +549,7 @@ class Cursor implements CursorInterface
     public function rewind()
     {
         $cursor = $this;
-        $this->retry(function() use ($cursor) {
+        $this->retryRead(function() use ($cursor) {
             $cursor->getMongoCursor()->rewind();
         }, false);
     }
@@ -686,7 +689,7 @@ class Cursor implements CursorInterface
          */
         $this->useIdentifierKeys = true;
 
-        $results = $this->retry(function() use ($cursor, $useIdentifierKeys) {
+        $results = $this->retryRead(function() use ($cursor, $useIdentifierKeys) {
             return iterator_to_array($cursor, $useIdentifierKeys);
         }, true);
 
@@ -708,42 +711,46 @@ class Cursor implements CursorInterface
     }
 
     /**
-     * Conditionally retry a closure if it yields an exception.
-     *
-     * If the closure does not return successfully within the configured number
-     * of retries, its first exception will be thrown.
-     *
      * The $recreate parameter may be used to recreate the MongoCursor between
      * retry attempts.
      *
      * @param \Closure $retry
      * @param boolean $recreate
      * @return mixed
+     * @throws
      */
-    protected function retry(\Closure $retry, $recreate = false)
+    protected function retryRead(\Closure $retry, $recreate = false)
     {
-        if ($this->numRetries < 1) {
+        $num_retries = $this->configuration->getNumRetryReads();
+        $retry_interval_ms = $this->configuration->getTimeBetweenReadRetriesMs();
+
+        if ($num_retries < 1) {
             return $retry();
         }
 
         $firstException = null;
 
-        for ($i = 0; $i <= $this->numRetries; $i++) {
+        for ($i = 0; $i <= $num_retries; $i++) {
             try {
                 return $retry();
-            } catch (\MongoCursorException $e) {
-            } catch (\MongoConnectionException $e) {
+            } catch (\MongoCursorException $exception) {}
+            catch (\MongoConnectionException $exception) {}
+
+            if (!$firstException) {
+                $firstException = $exception;
             }
 
-            if ($firstException === null) {
-                $firstException = $e;
-            }
-            if ($i === $this->numRetries) {
+            if ($i === $num_retries) {
                 throw $firstException;
             }
+
             if ($recreate) {
                 $this->recreate();
             }
+
+            usleep($retry_interval_ms * 1000);
         }
+
+        throw $firstException;
     }
 }

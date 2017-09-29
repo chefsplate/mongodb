@@ -30,9 +30,9 @@ use Doctrine\MongoDB\Event\MutableEventArgs;
 use Doctrine\MongoDB\Event\NearEventArgs;
 use Doctrine\MongoDB\Event\UpdateEventArgs;
 use Doctrine\MongoDB\Exception\ResultException;
+use Doctrine\MongoDB\Traits\MillisecondSleepTrait;
 use GeoJson\Geometry\Point;
 use BadMethodCallException;
-use MongoCommandCursor;
 
 /**
  * Wrapper for the MongoCollection class.
@@ -43,6 +43,8 @@ use MongoCommandCursor;
  */
 class Collection
 {
+    use MillisecondSleepTrait;
+
     /**
      * The Database instance to which this collection belongs.
      *
@@ -65,26 +67,28 @@ class Collection
     protected $mongoCollection;
 
     /**
-     * Number of times to retry queries.
-     *
-     * @var integer
+     * @var Configuration
      */
-    protected $numRetries;
+    protected $configuration;
 
     /**
      * Constructor.
      *
-     * @param Database         $database        Database to which this collection belongs
-     * @param \MongoCollection $mongoCollection MongoCollection instance being wrapped
-     * @param EventManager     $evm             EventManager instance
-     * @param integer          $numRetries      Number of times to retry queries
+     * @param Database         $database             Database to which this collection belongs
+     * @param \MongoCollection $mongoCollection      MongoCollection instance being wrapped
+     * @param EventManager     $evm                  EventManager instance
+     * @param Configuration    $configuration
      */
-    public function __construct(Database $database, \MongoCollection $mongoCollection, EventManager $evm, $numRetries = 0)
-    {
+    public function __construct(
+        Database $database,
+        \MongoCollection $mongoCollection,
+        EventManager $evm,
+        Configuration $configuration
+    ) {
         $this->database = $database;
         $this->mongoCollection = $mongoCollection;
         $this->eventManager = $evm;
-        $this->numRetries = (integer) $numRetries;
+        $this->configuration = $configuration;
     }
 
     /**
@@ -104,7 +108,7 @@ class Collection
      * @param array $pipeline Array of pipeline operators, or the first operator
      * @param array $options  Command options (if $pipeline was an array of pipeline operators)
      * @param array $op,...   Additional operators (if $pipeline was the first)
-     * @return Iterator
+     * @return Iterator|CommandCursor
      * @throws ResultException if the command fails
      */
     public function aggregate(array $pipeline, array $options = [] /* , array $op, ... */)
@@ -306,6 +310,7 @@ class Collection
     /**
      * Wrapper method for MongoCollection::ensureIndex().
      *
+     * @deprecated MongoCollection::ensureIndex() is deprecated. Use @see MongoCollection::createIndex() instead.
      * @see http://php.net/manual/en/mongocollection.ensureindex.php
      * @param array $keys
      * @param array $options
@@ -764,7 +769,7 @@ class Collection
     public function parallelCollectionScan($numCursors)
     {
         $mongoCollection = $this->mongoCollection;
-        $commandCursors = $this->retry(function() use ($mongoCollection, $numCursors) {
+        $commandCursors = $this->retryRead(function() use ($mongoCollection, $numCursors) {
             return $mongoCollection->parallelCollectionScan($numCursors);
         });
 
@@ -947,7 +952,7 @@ class Collection
         $command = array_merge($command, $commandOptions);
 
         $database = $this->database;
-        $result = $this->retry(function() use ($database, $command, $clientOptions) {
+        $result = $this->retryRead(function() use ($database, $command, $clientOptions) {
             return $database->command($command, $clientOptions);
         });
 
@@ -993,7 +998,7 @@ class Collection
             : (isset($clientOptions['timeout']) ? $clientOptions['timeout'] : null);
 
         $mongoCollection = $this->mongoCollection;
-        $commandCursor = $this->retry(function() use ($mongoCollection, $pipeline, $commandOptions) {
+        $commandCursor = $this->retryRead(function() use ($mongoCollection, $pipeline, $commandOptions) {
             return $mongoCollection->aggregateCursor($pipeline, $commandOptions);
         });
 
@@ -1019,7 +1024,18 @@ class Collection
         $options = isset($options['safe']) ? $this->convertWriteConcern($options) : $options;
         $options = isset($options['wtimeout']) ? $this->convertWriteTimeout($options) : $options;
         $options = isset($options['timeout']) ? $this->convertSocketTimeout($options) : $options;
-        return $this->mongoCollection->batchInsert($a, $options);
+
+        $batch_insert = function () use (&$a, &$options) {
+            $documents = $a;
+
+            $result = $this->mongoCollection->batchInsert($documents, $options);
+
+            $a = $documents;
+
+            return $result;
+        };
+
+        return $this->retryBatchInsert($batch_insert, $options, ...$a);
     }
 
     /**
@@ -1043,7 +1059,7 @@ class Collection
         $command = array_merge($command, $commandOptions);
 
         $database = $this->database;
-        $result = $this->retry(function() use ($database, $command, $clientOptions) {
+        $result = $this->retryRead(function() use ($database, $command, $clientOptions) {
             return $database->command($command, $clientOptions);
         });
 
@@ -1077,7 +1093,7 @@ class Collection
         $command = array_merge($command, $commandOptions);
 
         $database = $this->database;
-        $result = $this->retry(function() use ($database, $command, $clientOptions) {
+        $result = $this->retryRead(function() use ($database, $command, $clientOptions) {
             return $database->command($command, $clientOptions);
         });
 
@@ -1113,7 +1129,7 @@ class Collection
     protected function doFind(array $query, array $fields)
     {
         $mongoCollection = $this->mongoCollection;
-        $cursor = $this->retry(function() use ($mongoCollection, $query, $fields) {
+        $cursor = $this->retryRead(function() use ($mongoCollection, $query, $fields) {
             return $mongoCollection->find($query, $fields);
         });
         return $this->wrapCursor($cursor, $query, $fields);
@@ -1171,7 +1187,11 @@ class Collection
         $command['update'] = (object) $newObj;
         $command = array_merge($command, $commandOptions);
 
-        $result = $this->database->command($command, $clientOptions);
+        $findAndModify = function () use ($command, $clientOptions) {
+            return $this->database->command($command, $clientOptions);
+        };
+
+        $result = $this->retryIdempotentUpdate($findAndModify, $command['update']);
 
         if (empty($result['ok'])) {
             throw new ResultException($result);
@@ -1191,7 +1211,7 @@ class Collection
     protected function doFindOne(array $query, array $fields)
     {
         $mongoCollection = $this->mongoCollection;
-        return $this->retry(function() use ($mongoCollection, $query, $fields) {
+        return $this->retryRead(function() use ($mongoCollection, $query, $fields) {
             return $mongoCollection->findOne($query, $fields);
         });
     }
@@ -1206,7 +1226,7 @@ class Collection
     protected function doGetDBRef(array $reference)
     {
         $mongoCollection = $this->mongoCollection;
-        return $this->retry(function() use ($mongoCollection, $reference) {
+        return $this->retryRead(function() use ($mongoCollection, $reference) {
             return $mongoCollection->getDBRef($reference);
         });
     }
@@ -1252,7 +1272,7 @@ class Collection
         }
 
         $database = $this->database;
-        $result = $this->retry(function() use ($database, $command, $clientOptions) {
+        $result = $this->retryRead(function() use ($database, $command, $clientOptions) {
             return $database->command(['group' => $command], $clientOptions);
         });
 
@@ -1277,10 +1297,25 @@ class Collection
     protected function doInsert(array &$a, array $options)
     {
         $document = $a;
+
         $options = isset($options['safe']) ? $this->convertWriteConcern($options) : $options;
         $options = isset($options['wtimeout']) ? $this->convertWriteTimeout($options) : $options;
         $options = isset($options['timeout']) ? $this->convertSocketTimeout($options) : $options;
-        $result = $this->mongoCollection->insert($document, $options);
+
+        $insert = function () use (&$document, $options) {
+            $insert = $document;
+
+            $result = $this->mongoCollection->insert($insert, $options);
+
+            if (isset($insert['_id'])) {
+                $document['_id'] = $insert['_id'];
+            }
+
+            return $result;
+        };
+
+        $result = $this->retryInsert($insert, $document);
+
         if (isset($document['_id'])) {
             $a['_id'] = $document['_id'];
         }
@@ -1296,7 +1331,7 @@ class Collection
      * @param array|string      $out
      * @param array             $query
      * @param array             $options
-     * @return ArrayIterator
+     * @return ArrayIterator|Cursor
      * @throws ResultException if the command fails
      */
     protected function doMapReduce($map, $reduce, $out, array $query, array $options)
@@ -1370,7 +1405,7 @@ class Collection
         $command = array_merge($command, $commandOptions);
 
         $database = $this->database;
-        $result = $this->retry(function() use ($database, $command, $clientOptions) {
+        $result = $this->retryRead(function() use ($database, $command, $clientOptions) {
             return $database->command($command, $clientOptions);
         });
 
@@ -1439,40 +1474,263 @@ class Collection
             unset($options['multi']);
         }
 
-        return $this->mongoCollection->update($query, $newObj, $options);
+        $update = function () use ($query, $newObj, $options) {
+            return $this->mongoCollection->update($query, $newObj, $options);
+        };
+
+        return $this->retryIdempotentUpdate($update, $newObj);
     }
 
     /**
-     * Conditionally retry a closure if it yields an exception.
-     *
-     * If the closure does not return successfully within the configured number
-     * of retries, its first exception will be thrown.
-     *
-     * This method should not be used for write operations.
-     *
      * @param \Closure $retry
      * @return mixed
+     * @throws
      */
-    protected function retry(\Closure $retry)
+    protected function retryRead(\Closure $retry)
     {
-        if ($this->numRetries < 1) {
+        $num_retries = $this->configuration->getNumRetryReads();
+        $retry_interval_ms = $this->configuration->getTimeBetweenReadRetriesMs();
+
+        if ($num_retries < 1) {
             return $retry();
         }
 
         $firstException = null;
 
-        for ($i = 0; $i <= $this->numRetries; $i++) {
+        for ($i = 0; $i <= $num_retries; $i++) {
             try {
                 return $retry();
-            } catch (\MongoException $e) {
-                if ($firstException === null) {
-                    $firstException = $e;
+            } catch (\MongoException $exception) {}
+
+            if (!$firstException) {
+                $firstException = $exception;
+            }
+
+            if ($i === $num_retries) {
+                throw $firstException;
+            }
+
+            $this->sleepForMs($retry_interval_ms);
+        }
+
+        throw $firstException;
+    }
+
+    /**
+     * @param \Closure $retry
+     * @param array $options
+     * @param array[]|object[] ...$documents
+     * @return mixed
+     * @throws
+     */
+    protected function retryBatchInsert(\Closure $retry, array &$options = [], &...$documents)
+    {
+        $num_retries = $this->configuration->getNumRetryWrites();
+
+        if ($num_retries < 1) {
+            return $retry();
+        }
+
+        foreach ($documents as &$document) {
+            $is_object = is_object($document);
+
+            $id_exists = $is_object ? isset($document->_id) : isset($document['_id']);
+
+            if (!$id_exists) {
+                // To ensure an idempotent insert we need to generate the _id of the document client-side
+                $is_object
+                    ? $document->_id = new \MongoId()
+                    : $document['_id'] = new \MongoId();
+            }
+
+            unset ($document);
+        }
+
+        $retry_interval_ms = $this->configuration->getTimeBetweenWriteRetriesMs();
+        $firstException = null;
+        $original_continue_option = null;
+
+        for ($i = 0; $i <= $num_retries; $i++) {
+            // If we're retrying the batch insert operation, there's a chance that any number of documents have been
+            // inserted already prior the error being thrown. Since we only care about retrying due to connectivity
+            // issues, we have to make sure the batch insert always continues on errors; server-side exceptions will,
+            // presumably, be only a matter of data integrity while connection issues will bubble up regardless.
+            if ($i > 0) {
+                if (isset($options['continueOnError'])) {
+                    $original_continue_option = $options['continueOnError'];
                 }
-                if ($i === $this->numRetries) {
-                    throw $firstException;
+
+                $options['continueOnError'] = true;
+            }
+
+            try {
+                $results = $retry();
+
+                // The operation succeeded; we should revert options back to what they were
+                if (!isset($original_continue_option)) {
+                    unset($options['continueOnError']);
+                } else {
+                    $options['continueOnError'] = $original_continue_option;
                 }
+
+                return $results;
+            } catch (\MongoConnectionException $exception) {}
+            catch (\MongoProtocolException $exception) {}
+
+            if (!$firstException) {
+                $firstException = $exception;
+            }
+
+            if ($i === $num_retries) {
+                throw $firstException;
+            }
+
+            $this->sleepForMs($retry_interval_ms);
+        }
+
+        throw $firstException;
+    }
+
+    /**
+     * @param \Closure $retry
+     * @param array &$document
+     * @return mixed
+     * @throws \MongoDuplicateKeyException|mixed
+     */
+    protected function retryInsert(\Closure $retry, &$document)
+    {
+        $num_retries = $this->configuration->getNumRetryWrites();
+
+        if ($num_retries < 1) {
+            return $retry();
+        }
+
+        $retry_interval = $this->configuration->getTimeBetweenWriteRetriesMs();
+
+        if (!isset($document['_id'])) {
+            // To ensure an idempotent insert we need to generate the _id of the document client-side if there was
+            // none provided on the document
+            $document['_id'] = new \MongoId();
+        }
+
+        $firstException = null;
+
+        for ($i = 0; $i <= $num_retries; $i++) {
+            try {
+                return $retry();
+            } catch (\MongoConnectionException $exception) {}
+            catch (\MongoProtocolException $exception) {}
+            catch (\MongoDuplicateKeyException $exception) {
+                // If the very first insert results in a duplicate key exception then something is very wrong and
+                // the document should be burned
+                if ($i > 0) {
+                    // We only care if it's a duplicate _id key exception since we're setting the id client-side to
+                    // ensure unique inserts; other unique key indices are application-dependent
+                    if (strpos($exception->getMessage(), '_id_ dup key') !== false) {
+                        // At this point we're guaranteed to have the document inserted as we wanted it to be;
+                        // return the document as-is (same behaviour as the underlying driver) so that clients
+                        // can work with the result of the insert
+                        return $document;
+                    }
+                }
+
+                throw $exception;
+            }
+
+            if (!$firstException) {
+                $firstException = $exception;
+            }
+
+            if ($i === $num_retries) {
+                throw $firstException;
+            }
+
+            $this->sleepForMs($retry_interval);
+        }
+
+        throw $firstException;
+    }
+
+    /**
+     * Retries an update operation wrapped in a Closure if it consists only of idempotent operations.
+     *
+     * Operations that could modify a document over multiple iterations are not retried. Instead, the $retry Closure
+     * is performed as-is and returned directly.
+     *
+     * @param \Closure $retry
+     * @param object|array $operations
+     * @return mixed
+     * @throws
+     */
+    protected function retryIdempotentUpdate(\Closure $retry, $operations)
+    {
+        $num_retries = $this->configuration->getNumRetryWrites();
+
+        if ($num_retries < 1) {
+            return $retry();
+        }
+
+        $retry_interval = $this->configuration->getTimeBetweenWriteRetriesMs();
+
+        // Updates can be done with public-propertied objects, but we need to search through it as an array
+        if (!is_array($operations)) {
+            $operations = (array) $operations;
+        }
+
+        // Retrying updates at this level destroys some idempotent assurances, specifically for these update
+        // operations. Attempting to retry an update that involves these operators disables retry logic and simply
+        // returns the results of the $retry closure
+        $disallowed_operators = [
+            '$inc',
+            '$currentDate',
+            '$mul',
+            '$pop',
+            '$push',
+            '$pushAll',
+            '$bit',
+        ];
+
+        foreach ($disallowed_operators as $disallowed_operator) {
+            if ($this->searchForUpdateOperator($operations, $disallowed_operator)) {;
+                return $retry();
             }
         }
+
+        $firstException = null;
+
+        for ($i = 0; $i <= $num_retries; $i++) {
+            try {
+                return $retry();
+            } catch (\MongoConnectionException $connection_exception) {}
+
+            if (!$firstException) {
+                $firstException = $connection_exception;
+            }
+
+            if ($i === $num_retries) {
+                throw $firstException;
+            }
+
+            $this->sleepForMs($retry_interval);
+        }
+
+        throw $firstException;
+    }
+
+    /**
+     * @param array $operations
+     * @param string $operator
+     * @return bool
+     */
+    private function searchForUpdateOperator(array $operations, $operator)
+    {
+        foreach ($operations as $op => $value) {
+            if ($op === $operator) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1483,7 +1741,7 @@ class Collection
      */
     protected function wrapCommandCursor(\MongoCommandCursor $commandCursor)
     {
-        return new CommandCursor($commandCursor, $this->numRetries);
+        return new CommandCursor($commandCursor, $this->configuration);
     }
 
     /**
@@ -1496,7 +1754,7 @@ class Collection
      */
     protected function wrapCursor(\MongoCursor $cursor, $query, $fields)
     {
-        return new Cursor($this, $cursor, $query, $fields, $this->numRetries);
+        return new Cursor($this, $cursor, $this->configuration, $query, $fields);
     }
 
     /**

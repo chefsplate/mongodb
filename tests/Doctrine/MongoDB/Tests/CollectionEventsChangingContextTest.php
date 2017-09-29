@@ -3,6 +3,7 @@
 namespace Doctrine\MongoDB\Tests;
 
 use Doctrine\Common\EventManager;
+use Doctrine\MongoDB\Configuration;
 use Doctrine\MongoDB\Events;
 use Doctrine\MongoDB\Event\AggregateEventArgs;
 use Doctrine\MongoDB\Event\FindEventArgs;
@@ -16,11 +17,13 @@ class CollectionEventsChangingContextTest extends TestCase
 {
     private $database;
     private $mongoCollection;
+    private $configuration;
 
     public function setUp()
     {
         $this->database = $this->getMockDatabase();
         $this->mongoCollection = $this->getMockMongoCollection();
+        $this->configuration = $this->getMockConfiguration();
     }
 
     public function testAggregate()
@@ -271,7 +274,7 @@ class CollectionEventsChangingContextTest extends TestCase
     private function getMockCollection(EventManager $eventManager, array $methods)
     {
         $collection = $this->getMockBuilder('Doctrine\MongoDB\Collection')
-            ->setConstructorArgs([$this->database, $this->mongoCollection, $eventManager])
+            ->setConstructorArgs([$this->database, $this->mongoCollection, $eventManager, $this->configuration])
             ->setMethods(array_keys($methods))
             ->getMock();
 
@@ -295,6 +298,13 @@ class CollectionEventsChangingContextTest extends TestCase
     private function getMockMongoCollection()
     {
         return $this->getMockBuilder('MongoCollection')
+            ->disableOriginalConstructor()
+            ->getMock();
+    }
+
+    private function getMockConfiguration()
+    {
+        return $this->getMockBuilder(Configuration::class)
             ->disableOriginalConstructor()
             ->getMock();
     }

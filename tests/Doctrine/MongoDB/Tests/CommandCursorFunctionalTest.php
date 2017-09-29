@@ -2,8 +2,11 @@
 
 namespace Doctrine\MongoDB\Tests;
 
+use Doctrine\MongoDB\Collection;
+
 class CommandCursorFunctionalTest extends DatabaseTestCase
 {
+    /** @var Collection */
     private $collection;
     private $docs;
 
@@ -64,7 +67,7 @@ class CommandCursorFunctionalTest extends DatabaseTestCase
     }
 
     /**
-     * @covers Doctrine\MongoDB\Cursor::getSingleResult
+     * @covers \Doctrine\MongoDB\Cursor::getSingleResult
      */
     public function testGetSingleResultReturnsNullForEmptyResultSet()
     {

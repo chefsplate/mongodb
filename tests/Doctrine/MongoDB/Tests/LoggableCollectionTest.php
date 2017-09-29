@@ -2,6 +2,9 @@
 
 namespace Doctrine\MongoDB\Tests;
 
+use Doctrine\Common\EventManager;
+use Doctrine\MongoDB\Configuration;
+use Doctrine\MongoDB\Database;
 use Doctrine\MongoDB\LoggableCollection;
 
 class LoggableCollectionTest extends TestCase
@@ -25,6 +28,7 @@ class LoggableCollectionTest extends TestCase
 
     private function getTestLoggableCollection($loggerCallable)
     {
+        /** @var \PHPUnit_Framework_MockObject_MockObject|Database $database */
         $database = $this->getMockBuilder('Doctrine\MongoDB\Database')
             ->disableOriginalConstructor()
             ->getMock();
@@ -33,6 +37,7 @@ class LoggableCollectionTest extends TestCase
             ->method('getName')
             ->will($this->returnValue(self::databaseName));
 
+        /** @var \PHPUnit_Framework_MockObject_MockObject|\MongoCollection $mongoCollection */
         $mongoCollection = $this->getMockBuilder('MongoCollection')
             ->disableOriginalConstructor()
             ->getMock();
@@ -41,10 +46,16 @@ class LoggableCollectionTest extends TestCase
             ->method('getName')
             ->will($this->returnValue(self::collectionName));
 
+        /** @var EventManager|\PHPUnit_Framework_MockObject_MockObject $eventManager */
         $eventManager = $this->getMockBuilder('Doctrine\Common\EventManager')
             ->disableOriginalConstructor()
             ->getMock();
 
-        return new LoggableCollection($database, $mongoCollection, $eventManager, 0, $loggerCallable);
+        /** @var Configuration|\PHPUnit_Framework_MockObject_MockObject $configuration */
+        $configuration = $this->getMockBuilder('Doctrine\MongoDB\Configuration')
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        return new LoggableCollection($database, $mongoCollection, $eventManager, $configuration, $loggerCallable);
     }
 }

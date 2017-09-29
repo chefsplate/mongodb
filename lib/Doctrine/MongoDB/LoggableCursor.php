@@ -39,18 +39,24 @@ class LoggableCursor extends Cursor implements Loggable
      *
      * @param Collection   $collection     Collection used to create this Cursor
      * @param \MongoCursor $mongoCursor    MongoCursor being wrapped
+     * @param Configuration $configuration
      * @param array        $query          Query criteria
      * @param array        $fields         Selected fields (projection)
-     * @param integer      $numRetries     Number of times to retry queries
      * @param callable     $loggerCallable Logger callable
      */
-    public function __construct(Collection $collection, \MongoCursor $mongoCursor, array $query, array $fields, $numRetries, $loggerCallable)
-    {
+    public function __construct(
+        Collection $collection,
+        \MongoCursor $mongoCursor,
+        Configuration $configuration,
+        array $query,
+        array $fields,
+        $loggerCallable
+    ) {
         if ( ! is_callable($loggerCallable)) {
             throw new \InvalidArgumentException('$loggerCallable must be a valid callback');
         }
         $this->loggerCallable = $loggerCallable;
-        parent::__construct($collection, $mongoCursor, $query, $fields, $numRetries);
+        parent::__construct($collection, $mongoCursor, $configuration, $query, $fields);
     }
 
     /**

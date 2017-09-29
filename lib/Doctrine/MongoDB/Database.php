@@ -23,6 +23,7 @@ use Doctrine\Common\EventManager;
 use Doctrine\MongoDB\Event\CreateCollectionEventArgs;
 use Doctrine\MongoDB\Event\EventArgs;
 use Doctrine\MongoDB\Event\MutableEventArgs;
+use Doctrine\MongoDB\Traits\MillisecondSleepTrait;
 
 /**
  * Wrapper for the MongoDB class.
@@ -35,6 +36,8 @@ use Doctrine\MongoDB\Event\MutableEventArgs;
  */
 class Database
 {
+    use MillisecondSleepTrait;
+
     /**
      * The Connection instance to which this database belongs.
      *
@@ -57,26 +60,28 @@ class Database
     protected $mongoDB;
 
     /**
-     * Number of times to retry queries.
-     *
-     * @var integer
+     * @var Configuration
      */
-    protected $numRetries;
+    protected $configuration;
 
     /**
      * Constructor.
      *
-     * @param Connection      $connection Connection to which this database belongs
-     * @param \MongoDB        $mongoDB    MongoDB instance being wrapped
-     * @param EventManager    $evm        EventManager instance
-     * @param boolean|integer $numRetries Number of times to retry queries
+     * @param Connection      $connection           Connection to which this database belongs
+     * @param \MongoDB        $mongoDB              MongoDB instance being wrapped
+     * @param EventManager    $evm                  EventManager instance
+     * @param Configuration   $configuration
      */
-    public function __construct(Connection $connection, \MongoDB $mongoDB, EventManager $evm, $numRetries = 0)
-    {
+    public function __construct(
+        Connection $connection,
+        \MongoDB $mongoDB,
+        EventManager $evm,
+        Configuration $configuration
+    ) {
         $this->connection = $connection;
         $this->mongoDB = $mongoDB;
         $this->eventManager = $evm;
-        $this->numRetries = (integer) $numRetries;
+        $this->configuration = $configuration;
     }
 
     /**
@@ -418,7 +423,7 @@ class Database
      * Wrapper method for MongoDB::listCollections().
      *
      * @see http://php.net/manual/en/mongodb.listcollections.php
-     * @return array
+     * @return Collection[]
      */
     public function listCollections()
     {
@@ -520,7 +525,7 @@ class Database
     protected function doGetDBRef(array $reference)
     {
         $mongoDB = $this->mongoDB;
-        return $this->retry(function() use ($mongoDB, $reference) {
+        return $this->retryRead(function() use ($mongoDB, $reference) {
             return $mongoDB->getDBRef($reference);
         });
     }
@@ -551,7 +556,7 @@ class Database
     {
         $mongoGridFS = $this->mongoDB->getGridFS($prefix);
 
-        return new GridFS($this, $mongoGridFS, $this->eventManager);
+        return new GridFS($this, $mongoGridFS, $this->eventManager, $this->configuration);
     }
 
     /**
@@ -565,40 +570,38 @@ class Database
     {
         $mongoCollection = $this->mongoDB->selectCollection($name);
 
-        return new Collection($this, $mongoCollection, $this->eventManager, $this->numRetries);
+        return new Collection($this, $mongoCollection, $this->eventManager, $this->configuration);
     }
 
     /**
-     * Conditionally retry a closure if it yields an exception.
-     *
-     * If the closure does not return successfully within the configured number
-     * of retries, its first exception will be thrown.
-     *
-     * This method should not be used for write operations.
-     *
      * @param \Closure $retry
      * @return mixed
+     * @throws
      */
-    protected function retry(\Closure $retry)
+    protected function retryRead(\Closure $retry)
     {
-        if ($this->numRetries < 1) {
+        $num_retries = $this->configuration->getNumRetryReads();
+        $retry_interval = $this->configuration->getTimeBetweenReadRetriesMs();
+
+        if ($num_retries < 1) {
             return $retry();
         }
 
         $firstException = null;
 
-        for ($i = 0; $i <= $this->numRetries; $i++) {
+        for ($i = 0; $i <= $num_retries; $i++) {
             try {
                 return $retry();
-            } catch (\MongoException $e) {
-                if ($firstException === null) {
-                    $firstException = $e;
-                }
-                if ($i === $this->numRetries) {
-                    throw $firstException;
-                }
+            } catch (\MongoException $exception) {}
+
+            if (!$firstException) {
+                $firstException = $exception;
             }
+
+            $this->sleepForMs($retry_interval);
         }
+
+        throw $firstException;
     }
 
     /**
