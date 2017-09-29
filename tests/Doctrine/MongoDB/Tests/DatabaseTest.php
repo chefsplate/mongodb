@@ -2,6 +2,9 @@
 
 namespace Doctrine\MongoDB\Tests;
 
+use Doctrine\Common\EventManager;
+use Doctrine\MongoDB\Configuration;
+use Doctrine\MongoDB\Connection;
 use Doctrine\MongoDB\Database;
 
 class DatabaseTest extends TestCase
@@ -14,7 +17,12 @@ class DatabaseTest extends TestCase
             ->method('command')
             ->will($this->returnArgument(2));
 
-        $database = new Database($this->getMockConnection(), $mongoDB, $this->getMockEventManager());
+        $database = new Database(
+            $this->getMockConnection(),
+            $mongoDB,
+            $this->getMockEventManager(),
+            $this->getMockConfiguration()
+        );
 
         $hash = true;
         $this->assertTrue($database->command(['count' => 'foo'], [], $hash));
@@ -34,7 +42,12 @@ class DatabaseTest extends TestCase
             ->with('foo')
             ->will($this->returnValue($this->getMockMongoCollection()));
 
-        $database = new Database($this->getMockConnection(), $mongoDB, $this->getMockEventManager());
+        $database = new Database(
+            $this->getMockConnection(),
+            $mongoDB,
+            $this->getMockEventManager(),
+            $this->getMockConfiguration()
+        );
         $collection = $database->createCollection('foo', true, 10485760, 0);
 
         $this->assertInstanceOf('Doctrine\MongoDB\Collection', $collection);
@@ -53,7 +66,12 @@ class DatabaseTest extends TestCase
             ->with('foo')
             ->will($this->returnValue($this->getMockMongoCollection()));
 
-        $database = new Database($this->getMockConnection(), $mongoDB, $this->getMockEventManager());
+        $database = new Database(
+            $this->getMockConnection(),
+            $mongoDB,
+            $this->getMockEventManager(),
+            $this->getMockConfiguration()
+        );
         $collection = $database->createCollection('foo', ['capped' => true, 'size' => 10485760, 'autoIndexId' => false]);
 
         $this->assertInstanceOf('Doctrine\MongoDB\Collection', $collection);
@@ -72,7 +90,12 @@ class DatabaseTest extends TestCase
             ->with('foo')
             ->will($this->returnValue($this->getMockMongoCollection()));
 
-        $database = new Database($this->getMockConnection(), $mongoDB, $this->getMockEventManager());
+        $database = new Database(
+            $this->getMockConnection(),
+            $mongoDB,
+            $this->getMockEventManager(),
+            $this->getMockConfiguration()
+        );
         $collection = $database->createCollection('foo', ['capped' => 0, 'size' => null, 'max' => null]);
 
         $this->assertInstanceOf('Doctrine\MongoDB\Collection', $collection);
@@ -96,7 +119,12 @@ class DatabaseTest extends TestCase
             ->with(\MongoClient::RP_SECONDARY_PREFERRED)
             ->will($this->returnValue(false));
 
-        $database = new Database($this->getMockConnection(), $mongoDB, $this->getMockEventManager());
+        $database = new Database(
+            $this->getMockConnection(),
+            $mongoDB,
+            $this->getMockEventManager(),
+            $this->getMockConfiguration()
+        );
 
         $this->assertEquals(false, $database->setSlaveOkay(true));
     }
@@ -117,7 +145,12 @@ class DatabaseTest extends TestCase
             ->with(\MongoClient::RP_SECONDARY_PREFERRED, [['dc' => 'east']])
             ->will($this->returnValue(false));
 
-        $database = new Database($this->getMockConnection(), $mongoDB, $this->getMockEventManager());
+        $database = new Database(
+            $this->getMockConnection(),
+            $mongoDB,
+            $this->getMockEventManager(),
+            $this->getMockConfiguration()
+        );
 
         $this->assertEquals(true, $database->setSlaveOkay(true));
     }
@@ -136,7 +169,12 @@ class DatabaseTest extends TestCase
             ->with(\MongoClient::RP_SECONDARY_PREFERRED, [['dc' => 'east']])
             ->will($this->returnValue(true));
 
-        $database = new Database($this->getMockConnection(), $mongoDB, $this->getMockEventManager());
+        $database = new Database(
+            $this->getMockConnection(),
+            $mongoDB,
+            $this->getMockEventManager(),
+            $this->getMockConfiguration()
+        );
 
         $this->assertTrue($database->setReadPreference(\MongoClient::RP_PRIMARY));
         $this->assertTrue($database->setReadPreference(\MongoClient::RP_SECONDARY_PREFERRED, [['dc' => 'east']]));
@@ -149,11 +187,19 @@ class DatabaseTest extends TestCase
             ->method('command')
             ->with(['count' => 'foo'], ['socketTimeoutMS' => 1000]);
 
-        $database = new Database($this->getMockConnection(), $mongoDB, $this->getMockEventManager());
+        $database = new Database(
+            $this->getMockConnection(),
+            $mongoDB,
+            $this->getMockEventManager(),
+            $this->getMockConfiguration()
+        );
 
         $database->command(['count' => 'foo'], ['timeout' => 1000]);
     }
 
+    /**
+     * @return \PHPUnit_Framework_MockObject_MockObject|Connection
+     */
     private function getMockConnection()
     {
         return $this->getMockBuilder('Doctrine\MongoDB\Connection')
@@ -161,6 +207,9 @@ class DatabaseTest extends TestCase
             ->getMock();
     }
 
+    /**
+     * @return \PHPUnit_Framework_MockObject_MockObject|EventManager
+     */
     private function getMockEventManager()
     {
         return $this->getMockBuilder('Doctrine\Common\EventManager')
@@ -168,6 +217,9 @@ class DatabaseTest extends TestCase
             ->getMock();
     }
 
+    /**
+     * @return \PHPUnit_Framework_MockObject_MockObject|\MongoCollection
+     */
     private function getMockMongoCollection()
     {
         return $this->getMockBuilder('MongoCollection')
@@ -175,6 +227,19 @@ class DatabaseTest extends TestCase
             ->getMock();
     }
 
+    /**
+     * @return \PHPUnit_Framework_MockObject_MockObject|Configuration
+     */
+    private function getMockConfiguration()
+    {
+        return $this->getMockBuilder('Doctrine\MongoDB\Configuration')
+            ->disableOriginalConstructor()
+            ->getMock();
+    }
+
+    /**
+     * @return \PHPUnit_Framework_MockObject_MockObject|\MongoDB
+     */
     private function getMockMongoDB()
     {
         return $this->getMockBuilder('MongoDB')

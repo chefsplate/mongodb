@@ -5,6 +5,7 @@ namespace Doctrine\MongoDB\Tests;
 use Doctrine\Common\EventManager;
 use Doctrine\MongoDB\ArrayIterator;
 use Doctrine\MongoDB\Collection;
+use Doctrine\MongoDB\Configuration;
 use Doctrine\MongoDB\Database;
 use MongoCollection;
 use PHPUnit\Framework\Error\Deprecated;
@@ -625,7 +626,7 @@ class CollectionTest extends TestCase
     }
 
     /**
-     * @covers Doctrine\MongoDB\Collection::getIndexInfo
+     * @covers \Doctrine\MongoDB\Collection::getIndexInfo
      * @dataProvider provideIsFieldIndex
      */
     public function testIsFieldIndexed($indexInfo, $field, $expectedResult)
@@ -881,7 +882,7 @@ class CollectionTest extends TestCase
     }
 
     /**
-     * @expectedException PHPUnit_Framework_Error_Deprecated
+     * @expectedException \PHPUnit_Framework_Error_Deprecated
      */
     public function testUpdateShouldTriggerErrorForDeprecatedScalarQueryArgument()
     {
@@ -939,40 +940,41 @@ class CollectionTest extends TestCase
 
     public function testWriteConcernOptionIsConverted()
     {
+        $document = ['x' => 1];
+
         $mongoCollection = $this->getMockMongoCollection();
         $mongoCollection->expects($this->once())
             ->method('insert')
-            ->with(['x' => 1], ['w' => 1]);
+            ->with($document, ['w' => 1]);
 
         $coll = $this->getTestCollection($this->getMockDatabase(), $mongoCollection);
 
-        $document = ['x' => 1];
         $coll->insert($document, ['safe' => true]);
     }
 
     public function testSocketTimeoutOptionIsConverted()
     {
+        $document = ['x' => 1];
         $mongoCollection = $this->getMockMongoCollection();
         $mongoCollection->expects($this->once())
             ->method('insert')
-            ->with(['x' => 1], ['socketTimeoutMS' => 1000]);
+            ->with($document, ['socketTimeoutMS' => 1000]);
 
         $coll = $this->getTestCollection($this->getMockDatabase(), $mongoCollection);
 
-        $document = ['x' => 1];
         $coll->insert($document, ['timeout' => 1000]);
     }
 
     public function testWriteTimeoutOptionIsConverted()
     {
+        $document = ['x' => 1];
         $mongoCollection = $this->getMockMongoCollection();
         $mongoCollection->expects($this->once())
             ->method('insert')
-            ->with(['x' => 1], ['wTimeoutMS' => 1000]);
+            ->with($document, ['wTimeoutMS' => 1000]);
 
         $coll = $this->getTestCollection($this->getMockDatabase(), $mongoCollection);
 
-        $document = ['x' => 1];
         $coll->insert($document, ['wtimeout' => 1000]);
     }
 
@@ -1058,6 +1060,13 @@ class CollectionTest extends TestCase
             ->getMock();
     }
 
+    private function getMockConfiguration()
+    {
+        return $this->getMockBuilder('Doctrine\MongoDB\Configuration')
+            ->disableOriginalConstructor()
+            ->getMock();
+    }
+
     private function getMockMongoCollection()
     {
         $mc = $this->getMockBuilder('MongoCollection')
@@ -1098,12 +1107,24 @@ class CollectionTest extends TestCase
         return $point;
     }
 
-    private function getTestCollection(Database $db = null, MongoCollection $mc = null, EventManager $em = null)
-    {
+    private function getTestCollection(
+        Database $db = null,
+        MongoCollection $mc = null,
+        EventManager $em = null,
+        Configuration $cfg = null
+    ) {
+        /** @var Database $db */
         $db = $db ?: $this->getMockDatabase();
+
+        /** @var MongoCollection $mc */
         $mc = $mc ?: $this->getMockMongoCollection();
+
+        /** @var EventManager $em */
         $em = $em ?: $this->getMockEventManager();
 
-        return new Collection($db, $mc, $em);
+        /** @var Configuration $cfg */
+        $cfg = $cfg ?: $this->getMockConfiguration();
+
+        return new Collection($db, $mc, $em, $cfg);
     }
 }

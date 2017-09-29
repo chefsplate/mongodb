@@ -2,6 +2,9 @@
 
 namespace Doctrine\MongoDB\Tests;
 
+use Doctrine\Common\EventManager;
+use Doctrine\MongoDB\Configuration;
+use Doctrine\MongoDB\Connection;
 use Doctrine\MongoDB\LoggableDatabase;
 
 class LoggableDatabaseTest extends TestCase
@@ -24,10 +27,12 @@ class LoggableDatabaseTest extends TestCase
 
     private function getTestLoggableDatabase($loggerCallable)
     {
+        /** @var Connection|\PHPUnit_Framework_MockObject_MockObject $connection */
         $connection = $this->getMockBuilder('Doctrine\MongoDB\Connection')
             ->disableOriginalConstructor()
             ->getMock();
 
+        /** @var \MongoDB|\PHPUnit_Framework_MockObject_MockObject $mongoDB */
         $mongoDB = $this->getMockBuilder('MongoDB')
             ->disableOriginalConstructor()
             ->getMock();
@@ -36,10 +41,22 @@ class LoggableDatabaseTest extends TestCase
             ->method('__toString')
             ->will($this->returnValue(self::databaseName));
 
+        /** @var EventManager|\PHPUnit_Framework_MockObject_MockObject $eventManager */
         $eventManager = $this->getMockBuilder('Doctrine\Common\EventManager')
             ->disableOriginalConstructor()
             ->getMock();
 
-        return new LoggableDatabase($connection, $mongoDB, $eventManager, 0, $loggerCallable);
+        /** @var Configuration|\PHPUnit_Framework_MockObject_MockObject $configuration */
+        $configuration = $this->getMockBuilder('Doctrine\MongoDB\Configuration')
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        return new LoggableDatabase(
+            $connection,
+            $mongoDB,
+            $eventManager,
+            $configuration,
+            $loggerCallable
+        );
     }
 }

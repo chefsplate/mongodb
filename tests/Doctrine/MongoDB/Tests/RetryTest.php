@@ -12,8 +12,8 @@ class RetryTest extends DatabaseTestCase
     public function setUp()
     {
         $config = new Configuration();
-        $config->setRetryConnect(1);
-        $config->setRetryQuery(1);
+        $config->setNumRetryConnect(1);
+        $config->setNumRetryReads(1);
         $this->conn = new Connection(null, [], $config);
     }
 
@@ -36,7 +36,12 @@ class RetryTest extends DatabaseTestCase
     {
         $database = $this->conn->selectDatabase('test');
         $mongoCollection = $database->selectCollection('test')->getMongoCollection();
-        $collection = new CollectionStub($database, $mongoCollection, $this->conn->getEventManager(), 1);
+        $collection = new CollectionStub(
+            $database,
+            $mongoCollection,
+            $this->conn->getEventManager(),
+            $this->conn->getConfiguration()
+        );
         $exception = new \MongoException('Test');
         try {
             $collection->testRetries($exception);
@@ -50,8 +55,8 @@ class RetryTest extends DatabaseTestCase
     public function testConnectionRetries()
     {
         $config = new Configuration();
-        $config->setRetryConnect(1);
-        $config->setRetryQuery(1);
+        $config->setNumRetryConnect(1);
+        $config->setNumRetryReads(1);
         $conn = new ConnectionStub(null, [], $config);
         $exception = new \MongoException('Test');
         try {
@@ -67,7 +72,7 @@ class RetryTest extends DatabaseTestCase
     {
         $collection = $this->conn->selectDatabase('test')->selectCollection('test');
         $mongoCursor = $collection->find()->getMongoCursor();
-        $cursor = new CursorStub($collection, $mongoCursor, [], [], 1);
+        $cursor = new CursorStub($collection, $mongoCursor, $this->conn->getConfiguration(), [], []);
         $exception = new \MongoCursorException('Test');
         try {
             $cursor->testCursorExceptionRetries($exception);
@@ -82,7 +87,7 @@ class RetryTest extends DatabaseTestCase
     {
         $collection = $this->conn->selectDatabase('test')->selectCollection('test');
         $mongoCursor = $collection->find()->getMongoCursor();
-        $cursor = new CursorStub($collection, $mongoCursor, [], [], 1);
+        $cursor = new CursorStub($collection, $mongoCursor, $this->conn->getConfiguration(), [], []);
         $exception = new \MongoConnectionException('Test');
         try {
             $cursor->testConnectionExceptionRetries($exception);
@@ -102,7 +107,7 @@ class CollectionStub extends Collection
     {
         $numTimesTried = 0;
         try {
-            $this->retry(function() use(&$numTimesTried, $exception) {
+            $this->retryRead(function() use(&$numTimesTried, $exception) {
                 $numTimesTried++;
                 throw $exception;
             });
@@ -120,7 +125,7 @@ class ConnectionStub extends Connection
     {
         $numTimesTried = 0;
         try {
-            $this->retry(function() use(&$numTimesTried, $exception) {
+            $this->retryConnect(function() use(&$numTimesTried, $exception) {
                 $numTimesTried++;
                 throw $exception;
             });
@@ -139,7 +144,7 @@ class CursorStub extends Cursor
         $this->numTimesTried = 0;
         $numTimesTried = 0;
         try {
-            $this->retry(function() use(&$numTimesTried, $exception) {
+            $this->retryRead(function() use(&$numTimesTried, $exception) {
                 $numTimesTried++;
                 throw $exception;
             }, true);
@@ -153,7 +158,7 @@ class CursorStub extends Cursor
         $this->numTimesTried = 0;
         $numTimesTried = 0;
         try {
-            $this->retry(function() use(&$numTimesTried, $exception) {
+            $this->retryRead(function() use(&$numTimesTried, $exception) {
                 $numTimesTried++;
                 throw $exception;
             }, true);

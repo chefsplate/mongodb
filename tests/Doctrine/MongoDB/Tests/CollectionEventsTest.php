@@ -3,6 +3,7 @@
 namespace Doctrine\MongoDB\Tests;
 
 use Doctrine\Common\EventManager;
+use Doctrine\MongoDB\Configuration;
 use Doctrine\MongoDB\Events;
 use Doctrine\MongoDB\Event\AggregateEventArgs;
 use Doctrine\MongoDB\Event\DistinctEventArgs;
@@ -19,12 +20,14 @@ class CollectionEventsTest extends TestCase
     private $database;
     private $eventManager;
     private $mongoCollection;
+    private $configuration;
 
     public function setUp()
     {
         $this->database = $this->getMockDatabase();
         $this->eventManager = $this->getMockEventManager();
         $this->mongoCollection = $this->getMockMongoCollection();
+        $this->configuration = $this->getMockConfiguration();
     }
 
     public function testAggregate()
@@ -316,7 +319,7 @@ class CollectionEventsTest extends TestCase
     private function getMockCollection(array $methods)
     {
         $collection = $this->getMockBuilder('Doctrine\MongoDB\Collection')
-            ->setConstructorArgs([$this->database, $this->mongoCollection, $this->eventManager])
+            ->setConstructorArgs([$this->database, $this->mongoCollection, $this->eventManager, $this->configuration])
             ->setMethods(array_keys($methods))
             ->getMock();
 
@@ -346,6 +349,13 @@ class CollectionEventsTest extends TestCase
     private function getMockMongoCollection()
     {
         return $this->getMockBuilder('MongoCollection')
+            ->disableOriginalConstructor()
+            ->getMock();
+    }
+
+    private function getMockConfiguration()
+    {
+        return $this->getMockBuilder(Configuration::class)
             ->disableOriginalConstructor()
             ->getMock();
     }

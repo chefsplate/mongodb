@@ -3,23 +3,29 @@
 namespace Doctrine\MongoDB\Tests;
 
 use Doctrine\Common\EventManager;
+use Doctrine\MongoDB\Collection;
+use Doctrine\MongoDB\Configuration;
+use Doctrine\MongoDB\Connection;
 use Doctrine\MongoDB\Database;
 use Doctrine\MongoDB\Events;
 use Doctrine\MongoDB\Event\CreateCollectionEventArgs;
 use Doctrine\MongoDB\Event\EventArgs;
 use Doctrine\MongoDB\Event\MutableEventArgs;
+use Doctrine\MongoDB\GridFS;
 
 class DatabaseEventsTest extends TestCase
 {
     private $connection;
     private $eventManager;
     private $mongoDB;
+    private $configuration;
 
     public function setUp()
     {
         $this->connection = $this->getMockConnection();
         $this->eventManager = $this->getMockEventManager();
         $this->mongoDB = $this->getMockMongoDB();
+        $this->configuration = $this->getMockConfiguration();
     }
 
     public function testCreateCollection()
@@ -46,7 +52,7 @@ class DatabaseEventsTest extends TestCase
             ->method('drop')
             ->will($this->returnValue($result));
 
-        $db = new Database($this->connection, $this->mongoDB, $this->eventManager);
+        $db = new Database($this->connection, $this->mongoDB, $this->eventManager, $this->configuration);
 
         $this->expectEvents([
             [Events::preDropDatabase, new EventArgs($db)],
@@ -127,6 +133,9 @@ class DatabaseEventsTest extends TestCase
         }
     }
 
+    /**
+     * @return Collection|\PHPUnit_Framework_MockObject_MockObject
+     */
     private function getMockCollection()
     {
         return $this->getMockBuilder('Doctrine\MongoDB\Collection')
@@ -134,6 +143,9 @@ class DatabaseEventsTest extends TestCase
             ->getMock();
     }
 
+    /**
+     * @return Connection|\PHPUnit_Framework_MockObject_MockObject
+     */
     private function getMockConnection()
     {
         return $this->getMockBuilder('Doctrine\MongoDB\Connection')
@@ -141,10 +153,14 @@ class DatabaseEventsTest extends TestCase
             ->getMock();
     }
 
+    /**
+     * @param array $methods
+     * @return Database|\PHPUnit_Framework_MockObject_MockObject
+     */
     private function getMockDatabase(array $methods = [])
     {
         $db = $this->getMockBuilder('Doctrine\MongoDB\Database')
-            ->setConstructorArgs([$this->connection, $this->mongoDB, $this->eventManager])
+            ->setConstructorArgs([$this->connection, $this->mongoDB, $this->eventManager, $this->configuration])
             ->setMethods(array_keys($methods))
             ->getMock();
 
@@ -157,6 +173,9 @@ class DatabaseEventsTest extends TestCase
         return $db;
     }
 
+    /**
+     * @return EventManager|\PHPUnit_Framework_MockObject_MockObject
+     */
     private function getMockEventManager()
     {
         return $this->getMockBuilder('Doctrine\Common\EventManager')
@@ -164,6 +183,9 @@ class DatabaseEventsTest extends TestCase
             ->getMock();
     }
 
+    /**
+     * @return GridFS|\PHPUnit_Framework_MockObject_MockObject
+     */
     private function getMockGridFS()
     {
         return $this->getMockBuilder('Doctrine\MongoDB\GridFS')
@@ -171,9 +193,22 @@ class DatabaseEventsTest extends TestCase
             ->getMock();
     }
 
+    /**
+     * @return \MongoDB|\PHPUnit_Framework_MockObject_MockObject
+     */
     private function getMockMongoDB()
     {
         return $this->getMockBuilder('MongoDB')
+            ->disableOriginalConstructor()
+            ->getMock();
+    }
+
+    /**
+     * @return Configuration|\PHPUnit_Framework_MockObject_MockObject
+     */
+    private function getMockConfiguration()
+    {
+        return $this->getMockBuilder('Doctrine\MongoDB\Configuration')
             ->disableOriginalConstructor()
             ->getMock();
     }

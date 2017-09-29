@@ -1,6 +1,6 @@
 <?php
 
-namespace Doctrine\Tests\MongoDB\Util;
+namespace Doctrine\MongoDB\Tests\Util;
 
 use Doctrine\MongoDB\Util\ReadPreference;
 use Doctrine\MongoDB\Tests\TestCase;
@@ -8,7 +8,7 @@ use Doctrine\MongoDB\Tests\TestCase;
 class ReadPreferenceTest extends TestCase
 {
     /**
-     * @expectedException InvalidArgumentException
+     * @expectedException \InvalidArgumentException
      */
     public function testConvertNumericTypeShouldThrowExceptionForInvalidType()
     {

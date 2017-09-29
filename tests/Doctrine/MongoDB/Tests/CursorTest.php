@@ -3,6 +3,7 @@
 namespace Doctrine\MongoDB\Tests;
 
 use Doctrine\MongoDB\Collection;
+use Doctrine\MongoDB\Configuration;
 use Doctrine\MongoDB\Cursor;
 
 class CursorTest extends DatabaseTestCase
@@ -10,6 +11,8 @@ class CursorTest extends DatabaseTestCase
     private $doc1;
     private $doc2;
     private $doc3;
+
+    /** @var Cursor*/
     private $cursor;
 
     public function setUp()
@@ -31,7 +34,7 @@ class CursorTest extends DatabaseTestCase
     }
 
     /**
-     * @covers Doctrine\MongoDB\Cursor::getSingleResult
+     * @covers \Doctrine\MongoDB\Cursor::getSingleResult
      */
     public function testGetSingleResult()
     {
@@ -39,7 +42,7 @@ class CursorTest extends DatabaseTestCase
     }
 
     /**
-     * @covers Doctrine\MongoDB\Cursor::getSingleResult
+     * @covers \Doctrine\MongoDB\Cursor::getSingleResult
      */
     public function testCursorIsResetAfterGetSingleResult()
     {
@@ -55,7 +58,7 @@ class CursorTest extends DatabaseTestCase
     }
 
     /**
-     * @covers Doctrine\MongoDB\Cursor::getSingleResult
+     * @covers \Doctrine\MongoDB\Cursor::getSingleResult
      */
     public function testCursorIsResetBeforeGetSingleResult()
     {
@@ -64,7 +67,7 @@ class CursorTest extends DatabaseTestCase
     }
 
     /**
-     * @covers Doctrine\MongoDB\Cursor::getSingleResult
+     * @covers \Doctrine\MongoDB\Cursor::getSingleResult
      */
     public function testGetSingleResultReturnsNull()
     {
@@ -152,7 +155,7 @@ class CursorTest extends DatabaseTestCase
             ->method('setReadPreference')
             ->with(\MongoClient::RP_PRIMARY);
 
-        $cursor = $this->getTestCursor($this->getMockCollection(), $mongoCursor);
+        $cursor = $this->getTestCursor($this->getMockCollection(), $mongoCursor, $this->getMockConfiguration());
 
         $cursor->slaveOkay(true);
         $cursor->slaveOkay(false);
@@ -174,7 +177,7 @@ class CursorTest extends DatabaseTestCase
             ->with(\MongoClient::RP_SECONDARY_PREFERRED, [['dc' => 'east']])
             ->will($this->returnValue(false));
 
-        $cursor = $this->getTestCursor($this->getMockCollection(), $mongoCursor);
+        $cursor = $this->getTestCursor($this->getMockCollection(), $mongoCursor, $this->getMockConfiguration());
 
         $cursor->slaveOkay(true);
     }
@@ -193,7 +196,7 @@ class CursorTest extends DatabaseTestCase
             ->with(\MongoClient::RP_SECONDARY_PREFERRED, [['dc' => 'east']])
             ->will($this->returnValue(true));
 
-        $cursor = $this->getTestCursor($this->getMockCollection(), $mongoCursor);
+        $cursor = $this->getTestCursor($this->getMockCollection(), $mongoCursor, $this->getMockConfiguration());
 
         $this->assertSame($cursor, $cursor->setReadPreference(\MongoClient::RP_PRIMARY));
         $this->assertSame($cursor, $cursor->setReadPreference(\MongoClient::RP_SECONDARY_PREFERRED, [['dc' => 'east']]));
@@ -210,7 +213,7 @@ class CursorTest extends DatabaseTestCase
             ->method('sort')
             ->with(['x' => $expected]);
 
-        $cursor = $this->getTestCursor($this->getMockCollection(), $mongoCursor);
+        $cursor = $this->getTestCursor($this->getMockCollection(), $mongoCursor, $this->getMockConfiguration());
 
         $cursor->sort(['x' => $actual]);
     }
@@ -298,7 +301,7 @@ class CursorTest extends DatabaseTestCase
             ->method('getMongoCollection')
             ->will($this->returnValue($mongoCollection));
 
-        $cursor = $this->getTestCursor($collection, $mongoCursor, ['x' => 9500]);
+        $cursor = $this->getTestCursor($collection, $mongoCursor, $this->getMockConfiguration(), ['x' => 9500]);
 
         $cursor
             ->hint(['x' => 1])
@@ -345,13 +348,16 @@ class CursorTest extends DatabaseTestCase
             ->method('getMongoCollection')
             ->will($this->returnValue($mongoCollection));
 
-        $cursor = $this->getTestCursor($collection, $mongoCursor, ['x' => 9500]);
+        $cursor = $this->getTestCursor($collection, $mongoCursor, $this->getMockConfiguration(), ['x' => 9500]);
 
         $cursor->maxTimeMS(30000);
 
         $cursor->recreate();
     }
 
+    /**
+     * @return Collection|\PHPUnit_Framework_MockObject_MockObject
+     */
     private function getMockCollection()
     {
         return $this->getMockBuilder('Doctrine\MongoDB\Collection')
@@ -359,6 +365,19 @@ class CursorTest extends DatabaseTestCase
             ->getMock();
     }
 
+    /**
+     * @return Configuration|\PHPUnit_Framework_MockObject_MockObject
+     */
+    private function getMockConfiguration()
+    {
+        return $this->getMockBuilder(Configuration::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+    }
+
+    /**
+     * @return \MongoCursor|\PHPUnit_Framework_MockObject_MockObject
+     */
     private function getMockMongoCursor()
     {
         return $this->getMockBuilder('MongoCursor')
@@ -366,8 +385,12 @@ class CursorTest extends DatabaseTestCase
             ->getMock();
     }
 
-    private function getTestCursor(Collection $collection, \MongoCursor $mongoCursor, $query = [])
-    {
-        return new Cursor($collection, $mongoCursor, $query);
+    private function getTestCursor(
+        Collection $collection,
+        \MongoCursor $mongoCursor,
+        Configuration $configuration,
+        $query = []
+    ) {
+        return new Cursor($collection, $mongoCursor, $configuration, $query);
     }
 }
