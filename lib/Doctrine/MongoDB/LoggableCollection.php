@@ -39,16 +39,21 @@ class LoggableCollection extends Collection implements Loggable
      * @param Database         $database        Database to which this collection belongs
      * @param \MongoCollection $mongoCollection MongoCollection instance being wrapped
      * @param EventManager     $evm             EventManager instance
-     * @param integer          $numRetries      Number of times to retry queries
+     * @param Configuration    $configuration
      * @param callable         $loggerCallable  The logger callable
      */
-    public function __construct(Database $database, \MongoCollection $mongoCollection, EventManager $evm, $numRetries, $loggerCallable)
-    {
+    public function __construct(
+        Database $database,
+        \MongoCollection $mongoCollection,
+        EventManager $evm,
+        Configuration $configuration,
+        $loggerCallable
+    ) {
         if ( ! is_callable($loggerCallable)) {
             throw new \InvalidArgumentException('$loggerCallable must be a valid callback');
         }
         $this->loggerCallable = $loggerCallable;
-        parent::__construct($database, $mongoCollection, $evm, $numRetries);
+        parent::__construct($database, $mongoCollection, $evm, $configuration);
     }
 
     /**
@@ -62,6 +67,6 @@ class LoggableCollection extends Collection implements Loggable
      */
     protected function wrapCursor(\MongoCursor $cursor, $query, $fields)
     {
-        return new LoggableCursor($this, $cursor, $query, $fields, $this->numRetries, $this->loggerCallable);
+        return new LoggableCursor($this, $cursor, $this->configuration, $query, $fields, $this->loggerCallable);
     }
 }

@@ -570,7 +570,7 @@ class Database
     {
         $mongoCollection = $this->mongoDB->selectCollection($name);
 
-        return new Collection($this, $mongoCollection, $this->eventManager, $this->numRetries);
+        return new Collection($this, $mongoCollection, $this->eventManager, $this->configuration);
     }
 
     /**
