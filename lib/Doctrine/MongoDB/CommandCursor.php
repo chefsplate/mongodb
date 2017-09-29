@@ -38,11 +38,9 @@ class CommandCursor implements Iterator
     private $mongoCommandCursor;
 
     /**
-     * Number of times to retry queries.
-     *
-     * @var integer
+     * @var Configuration
      */
-    private $numRetries;
+    private $configuration;
 
     private $batchSize;
     private $timeout;
@@ -51,12 +49,12 @@ class CommandCursor implements Iterator
      * Constructor.
      *
      * @param MongoCommandCursor $mongoCommandCursor MongoCommandCursor instance being wrapped
-     * @param integer            $numRetries         Number of times to retry queries
+     * @param Configuration      $configuration
      */
-    public function __construct(MongoCommandCursor $mongoCommandCursor, $numRetries = 0)
+    public function __construct(MongoCommandCursor $mongoCommandCursor, Configuration $configuration)
     {
         $this->mongoCommandCursor = $mongoCommandCursor;
-        $this->numRetries = (integer) $numRetries;
+        $this->configuration = $configuration;
     }
 
     /**
@@ -84,7 +82,7 @@ class CommandCursor implements Iterator
     {
         $cursor = $this;
 
-        return $this->retry(function() use ($cursor) {
+        return $this->retryRead(function() use ($cursor) {
             return iterator_count($cursor);
         });
     }
@@ -174,7 +172,7 @@ class CommandCursor implements Iterator
     {
         $cursor = $this;
 
-        $this->retry(function() use ($cursor) {
+        $this->retryRead(function() use ($cursor) {
             $cursor->getMongoCommandCursor()->next();
         });
     }
@@ -190,7 +188,7 @@ class CommandCursor implements Iterator
     {
         $cursor = $this;
 
-        return $this->retry(function() use ($cursor) {
+        return $this->retryRead(function() use ($cursor) {
             return $cursor->getMongoCommandCursor()->rewind();
         });
     }
@@ -225,7 +223,7 @@ class CommandCursor implements Iterator
     {
         $cursor = $this;
 
-        return $this->retry(function() use ($cursor) {
+        return $this->retryRead(function() use ($cursor) {
             return iterator_to_array($cursor);
         });
     }
@@ -243,35 +241,38 @@ class CommandCursor implements Iterator
     }
 
     /**
-     * Conditionally retry a closure if it yields an exception.
-     *
-     * If the closure does not return successfully within the configured number
-     * of retries, its first exception will be thrown.
-     *
      * @param \Closure $retry
      * @return mixed
+     * @throws
      */
-    protected function retry(\Closure $retry)
+    protected function retryRead(\Closure $retry)
     {
-        if ($this->numRetries < 1) {
+        $num_retries = $this->configuration->getNumRetryReads();
+        $retry_interval_ms = $this->configuration->getTimeBetweenReadRetriesMs();
+
+        if ($num_retries < 1) {
             return $retry();
         }
 
         $firstException = null;
 
-        for ($i = 0; $i <= $this->numRetries; $i++) {
+        for ($i = 0; $i <= $num_retries; $i++) {
             try {
                 return $retry();
-            } catch (\MongoCursorException $e) {
-            } catch (\MongoConnectionException $e) {
+            } catch (\Exception $exception) {
+                if (!$exception instanceof \MongoCursorException
+                    || !$exception instanceof \MongoConnectionException) {
+                    throw $exception;
+                }
+
+                if (!$firstException) {
+                    $firstException = $exception;
+                }
             }
 
-            if ($firstException === null) {
-                $firstException = $e;
-            }
-            if ($i === $this->numRetries) {
-                throw $firstException;
-            }
+            usleep($retry_interval_ms * 1000);
         }
+
+        throw $firstException;
     }
 }

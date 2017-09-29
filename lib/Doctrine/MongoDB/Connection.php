@@ -419,12 +419,22 @@ class Connection
     protected function doSelectDatabase($name)
     {
         $mongoDB = $this->mongoClient->selectDB($name);
-        $numRetries = $this->config->getNumRetryReads();
         $loggerCallable = $this->config->getLoggerCallable();
 
         return $loggerCallable !== null
-            ? new LoggableDatabase($this, $mongoDB, $this->eventManager, $numRetries, $loggerCallable)
-            : new Database($this, $mongoDB, $this->eventManager, $numRetries);
+            ? new LoggableDatabase(
+                $this,
+                $mongoDB,
+                $this->eventManager,
+                $this->config,
+                $loggerCallable
+            )
+            : new Database(
+                $this,
+                $mongoDB,
+                $this->eventManager,
+                $this->config
+            );
     }
 
     /**
