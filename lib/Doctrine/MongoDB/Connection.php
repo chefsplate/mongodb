@@ -21,6 +21,7 @@ namespace Doctrine\MongoDB;
 
 use Doctrine\Common\EventManager;
 use Doctrine\MongoDB\Event\EventArgs;
+use Doctrine\MongoDB\Traits\MillisecondSleepTrait;
 
 /**
  * Wrapper for the MongoClient class.
@@ -30,6 +31,8 @@ use Doctrine\MongoDB\Event\EventArgs;
  */
 class Connection
 {
+    use MillisecondSleepTrait;
+
     /**
      * The PHP MongoClient instance being wrapped.
      *
@@ -84,8 +87,13 @@ class Connection
      * @param EventManager        $evm           EventManager instance
      * @param array               $driverOptions MongoClient constructor options
      */
-    public function __construct($server = null, array $options = [], Configuration $config = null, EventManager $evm = null, array $driverOptions = [])
-    {
+    public function __construct(
+        $server = null,
+        array $options = [],
+        Configuration $config = null,
+        EventManager $evm = null,
+        array $driverOptions = []
+    ) {
         if ($server instanceof \MongoClient || $server instanceof \Mongo) {
             $this->mongoClient = $server;
         } else {
@@ -120,7 +128,7 @@ class Connection
         $this->initialize();
 
         $mongoClient = $this->mongoClient;
-        return $this->retry(function() use ($mongoClient) {
+        return $this->retryConnect(function() use ($mongoClient) {
             return $mongoClient->connect();
         });
     }
@@ -287,7 +295,7 @@ class Connection
         $options = isset($options['timeout']) ? $this->convertConnectTimeout($options) : $options;
         $options = isset($options['wTimeout']) ? $this->convertWriteTimeout($options) : $options;
 
-        $this->mongoClient = $this->retry(function() use ($server, $options) {
+        $this->mongoClient = $this->retryConnect(function() use ($server, $options) {
             return new \MongoClient($server, $options, $this->driverOptions);
         });
 
@@ -411,7 +419,7 @@ class Connection
     protected function doSelectDatabase($name)
     {
         $mongoDB = $this->mongoClient->selectDB($name);
-        $numRetries = $this->config->getRetryQuery();
+        $numRetries = $this->config->getNumRetryReads();
         $loggerCallable = $this->config->getLoggerCallable();
 
         return $loggerCallable !== null
@@ -420,36 +428,38 @@ class Connection
     }
 
     /**
-     * Conditionally retry a closure if it yields an exception.
-     *
-     * If the closure does not return successfully within the configured number
-     * of retries, its first exception will be thrown.
-     *
      * @param \Closure $retry
      * @return mixed
+     * @throws
      */
-    protected function retry(\Closure $retry)
+    protected function retryConnect(\Closure $retry)
     {
-        $numRetries = $this->config->getRetryConnect();
+        $num_retries = $this->config->getNumRetryConnect();
+        $retry_interval_ms = $this->config->getTimeBetweenWriteRetriesMs();
 
-        if ($numRetries < 1) {
+        if ($num_retries < 1) {
             return $retry();
         }
 
         $firstException = null;
 
-        for ($i = 0; $i <= $numRetries; $i++) {
+        for ($i = 0; $i <= $num_retries; $i++) {
             try {
                 return $retry();
-            } catch (\MongoException $e) {
-                if ($firstException === null) {
-                    $firstException = $e;
-                }
-                if ($i === $numRetries) {
-                    throw $firstException;
-                }
+            } catch (\MongoException $exception) {}
+
+            if (!$firstException) {
+                $firstException = $exception;
             }
+
+            if ($i === $num_retries) {
+                throw $firstException;
+            }
+
+            $this->sleepForMs($retry_interval_ms);
         }
+
+        throw $firstException;
     }
 
     /**
